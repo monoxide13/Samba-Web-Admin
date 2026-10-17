@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · Samba Web Admin</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
+<body>
+<header><div class="top"><strong>Samba Web Admin</strong><span class="subtle">Samba administration · {{ account }}</span></div>
+<nav><a class="{{ 'active' if request.endpoint == 'system' else '' }}" href="{{ url_for('system') }}">System configuration</a>
+<a class="{{ 'active' if request.endpoint == 'accounts' else '' }}" href="{{ url_for('accounts') }}">Users &amp; groups</a>
+<a class="{{ 'active' if request.endpoint == 'shares' else '' }}" href="{{ url_for('shares') }}">Shares &amp; permissions</a></nav></header>
+<main>
+{% for category,message in get_flashed_messages(with_categories=true) %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}
+{% if not authorized %}
+<section class="panel auth"><h1>Unlock sudo operations</h1><p>Enter the credentials for the Linux account that launched this program. Credentials remain in this browser's server-side session for 15 minutes of inactivity; they are not shared with other browsers.</p>
+<div class="notice warning"><strong>Single-session administration recommended.</strong> Avoid using this interface from multiple browsers or devices at the same time. Concurrent user, group, share, and permission edits can conflict or overwrite one another. The <code>smb.conf</code> editor rejects stale file revisions, but not all other operations can detect concurrent changes.</div>
+<form method="post" action="{{ url_for('credentials') }}" class="formgrid">
+<input type="hidden" name="csrf" value="{{ csrf }}"><label>Linux account<input name="username" value="{{ account }}" required autocomplete="username"></label>
+<label>Sudo password<input type="password" name="password" required autocomplete="current-password"></label>
+<div class="full"><button>Unlock this browser</button></div></form>
+<p class="hint">This server accepts connections from other computers. You are responsible for network access controls; use HTTPS or a trusted network when entering sudo credentials.</p>
+</section>
+{% else %}<div class="session"><span>Session unlocked as <strong>{{ account }}</strong></span>
+<form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary small">Clear credentials</button></form></div>
+<p class="hint refresh-note"><strong>Refresh to reload:</strong> Refreshing this page re-reads <code>/etc/samba/smb.conf</code>, local users/groups, and service states from the server. Unsaved form changes are discarded.</p>{% endif %}
+{% block content %}{% endblock %}
+<footer>On-demand administration tool. Unix filesystem permissions and Samba access rules both affect effective access. Existing files are never changed recursively by this interface.</footer>
+</main></body></html>

@@ -1,0 +1,47 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Shares &amp; permissions</h1>
+{% if data %}
+<p class="lede">Choose a share to edit or create a new one. Samba access settings and underlying Linux ownership, mode bits and POSIX ACLs are managed separately.</p>
+<div class="share-list"><a class="chip {{ 'selected' if not selected else '' }}" href="{{ url_for('shares') }}">+ New share</a>
+{% for share in data.shares %}<a class="chip {{ 'selected' if selected and selected.name==share.name else '' }}" href="{{ url_for('shares',edit=share.name) }}">{{ share.name }}{% if share.protected %} · system{% endif %}</a>{% endfor %}</div>
+{% if selected and selected.protected %}<div class="notice warning">Special Samba share sections are displayed but protected from modification here.</div>{% else %}
+<section class="panel"><div class="section-head"><h2>{{ 'Edit share: ' + selected.name if selected else 'Create a Samba share' }}</h2></div>
+<form action="{{ url_for('action') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="config"><input type="hidden" name="type" value="share_save"><input type="hidden" name="return_to" value="shares"><input type="hidden" name="revision" value="{{ data.revision }}"><input type="hidden" name="old_name" value="{{ selected.name if selected else '' }}">
+<label>Share name<input name="name" required value="{{ selected.name if selected else '' }}" {{ 'readonly' if selected else '' }} maxlength="61" pattern="[A-Za-z0-9][A-Za-z0-9 _.-]*"></label>
+<div class="setting-header"><b>Share option</b><b>Configured value</b><b>Samba default</b></div>
+{% set opts = selected.options if selected else {} %}
+{% for key,label,kind,help in fields %}
+<div class="setting"><div><label for="s{{ loop.index }}">{{ label }}</label><p class="hint">{{ help }}</p></div>
+<div>{% set value = opts.get(key,'') %}{% set name = 'cfg_' + key.replace(' ','_') %}
+{% if kind == 'bool' %}<select id="s{{ loop.index }}" name="{{ name }}"><option value="" {{ 'selected' if not value else '' }}>Use default</option><option value="yes" {{ 'selected' if value|lower == 'yes' else '' }}>yes</option><option value="no" {{ 'selected' if value|lower == 'no' else '' }}>no</option></select>
+{% else %}<input id="s{{ loop.index }}" name="{{ name }}" value="{{ value }}" {{ 'required' if kind == 'path' else '' }} placeholder="{{ 'e.g. /srv/samba/shared' if kind == 'path' else 'Use default / leave empty' }}" maxlength="2048">{% endif %}
+</div><div class="default">{{ data.defaults['share'].get(key,'(not available)') or '(empty)' }}</div></div>{% endfor %}
+<p class="hint">Allowed users/groups use names such as <code>alice @accounting</code>. Samba checks these lists in addition to Linux filesystem permissions.</p>
+<div class="actions"><button>Validate, save and reload Samba</button></div></form>
+{% if selected %}<details class="danger"><summary>Delete this share definition</summary><p>Removes <code>[{{ selected.name }}]</code> from smb.conf only, <strong>not</strong> files or folders.</p>
+<form method="post" action="{{ url_for('action') }}" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="config"><input type="hidden" name="type" value="share_delete"><input type="hidden" name="return_to" value="shares"><input type="hidden" name="revision" value="{{ data.revision }}"><input type="hidden" name="name" value="{{ selected.name }}"><input name="confirm" required placeholder="Type share name"><button class="destructive">Delete definition</button></form></details>{% endif %}
+</section>
+{% endif %}
+{% if selected and not selected.protected %}
+<div class="split"><section class="panel"><h2>Directory ownership and mode</h2><p>Directory: <code>{{ selected.options.get('path','(unset)') }}</code></p>
+{% if selected.fs %}<p>Current: <strong>{{ selected.fs.user }}:{{ selected.fs.group }}</strong>, mode <strong>{{ selected.fs.mode }}</strong></p>{% else %}<p class="hint">Share directory does not exist or could not be inspected.</p>{% endif %}
+<p class="hint">Changes apply only to the share's root directory, not recursively. Group inheritance from parent directories normally uses setgid (e.g. mode <code>2770</code>); user ownership can use Samba's inherit owner option.</p>
+<form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="share_directory"><input type="hidden" name="return_to" value="shares"><input type="hidden" name="name" value="{{ selected.name }}">
+<label>Set Unix owner (blank keeps current)<select name="owner"><option value="">Leave unchanged</option>{% for user in data.users %}<option value="{{ user.name }}">{{ user.name }}</option>{% endfor %}</select></label>
+<label>Set Unix group (blank keeps current)<select name="group"><option value="">Leave unchanged</option>{% for group in data.groups %}<option value="{{ group.name }}">{{ group.name }}</option>{% endfor %}</select></label>
+<label>Set mode (blank keeps current)<input name="mode" placeholder="2770" pattern="[0-7]{3,4}" maxlength="4"></label>
+<label class="check"><input type="checkbox" name="create"> Create directory if missing (parents included)</label><button>Apply filesystem changes</button></form>
+</section><section class="panel"><h2>POSIX filesystem ACLs</h2>
+{% if selected.fs and selected.fs.acl is defined %}<pre>{{ selected.fs.acl }}</pre>{% else %}<p class="hint">Install the <code>acl</code> package and make sure the directory exists to inspect ACLs.</p>{% endif %}
+<p class="hint">Default ACL entries are inherited by new files and directories. Existing file permissions are never recursively changed.</p>
+<form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="acl_update"><input type="hidden" name="return_to" value="shares"><input type="hidden" name="name" value="{{ selected.name }}">
+<label>Principal kind<select name="kind"><option value="group">Group</option><option value="user">User</option></select></label>
+<label>Linux user/group name<input name="principal" required placeholder="e.g. accounting"></label>
+<label>Permissions (rwx notation)<select name="permissions">{% for mode in ['rwx','rw-','r-x','r--','-wx','-w-','--x','---'] %}<option value="{{ mode }}">{{ mode }}</option>{% endfor %}</select></label>
+<label class="check"><input type="checkbox" name="default"> Default/inheritable ACL instead of current-directory ACL</label>
+<label>Action<select name="acl_action"><option value="set">Add/update entry</option><option value="remove">Remove entry</option></select></label>
+<button>Apply ACL change</button></form>
+</section></div>
+{% endif %}
+{% else %}<p class="muted">Unlock this browser to view and manage shares.</p>{% endif %}
+{% endblock %}

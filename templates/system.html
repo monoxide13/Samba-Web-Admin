@@ -1,0 +1,29 @@
+{% extends 'base.html' %}{% block content %}
+<h1>System configuration</h1>
+{% if data %}
+<p class="lede">Manage selected <code>[global]</code> settings. The <strong>Default</strong> column is queried from this installed version of Samba; leaving a setting blank removes the explicit override from <code>smb.conf</code>.</p>
+{% if data.include_warning %}<div class="notice warning">This configuration uses <code>include</code>. Settings and shares in included files are not directly managed by this interface.</div>{% endif %}
+<section class="panel"><div class="section-head"><h2>Samba service controls</h2><span class="subtle">systemd · current service status</span></div>
+<p class="hint">Only installed, unmasked systemd services can be controlled. Services not present on this server receive no start, stop, or restart commands. Starting the AD domain controller is usually not appropriate for a standalone file server.</p>
+<div class="tablewrap"><table class="service-table"><thead><tr><th>Service</th><th>Systemd unit</th><th>Status</th><th>Controls</th></tr></thead><tbody>
+{% for service in data.services %}<tr><td><strong>{{ service.label }}</strong></td><td><code>{{ service.unit if service.installed else 'Not installed / unavailable' }}</code></td>
+<td><span class="service-status {{ 'running' if service.active == 'active' else 'stopped' }}">{{ service.active }}</span>{% if service.installed %}<span class="subtle"> ({{ service.substate }})</span>{% endif %}</td>
+<td>{% if service.installed %}<div class="service-actions">
+{% for command in ['start', 'stop', 'restart'] %}<form method="post" action="{{ url_for('action') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="service_control"><input type="hidden" name="return_to" value="system"><input type="hidden" name="service" value="{{ service.name }}"><input type="hidden" name="command" value="{{ command }}"><button class="small {{ 'secondary' if command != 'stop' else 'destructive' }}">{{ command|capitalize }}</button></form>{% endfor %}</div>{% else %}<span class="muted">No actions</span>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section class="panel"><div class="section-head"><h2>Global settings</h2><span class="subtle">Changes validated and backed up</span></div>
+<form action="{{ url_for('action') }}" method="post">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="config"><input type="hidden" name="type" value="global_save"><input type="hidden" name="revision" value="{{ data.revision }}"><input type="hidden" name="return_to" value="system">
+<div class="setting-header"><b>Setting</b><b>Configured value</b><b>Samba default</b></div>
+{% for key,label,kind,help in fields %}
+<div class="setting"><div><label for="g{{ loop.index }}">{{ label }}</label><p class="hint">{{ help }}</p></div>
+<div>{% set value = data['global'].get(key,'') %}{% set name = 'cfg_' + key.replace(' ','_') %}
+{% if kind == 'bool' %}<select id="g{{ loop.index }}" name="{{ name }}"><option value="" {{ 'selected' if not value else '' }}>Use default</option>{% for option in ['yes','no'] %}<option value="{{ option }}" {{ 'selected' if value|lower == option else '' }}>{{ option }}</option>{% endfor %}</select>
+{% elif kind == 'guest' %}<select id="g{{ loop.index }}" name="{{ name }}"><option value="" {{ 'selected' if not value else '' }}>Use default</option>{% for option in ['Never','Bad User','Bad Password','Bad Uid'] %}<option value="{{ option }}" {{ 'selected' if value|lower == option|lower else '' }}>{{ option }}</option>{% endfor %}</select>
+{% else %}<input id="g{{ loop.index }}" name="{{ name }}" value="{{ value }}" placeholder="Use default" maxlength="2048">{% endif %}
+</div><div class="default">{{ data.defaults['global'].get(key,'(not available)') or '(empty)' }}</div></div>
+{% endfor %}
+<div class="actions"><button>Validate, save and reload Samba</button></div></form></section>
+<details class="panel"><summary>View current smb.conf (read-only)</summary><pre>{{ data.raw }}</pre></details>
+{% else %}<p class="muted">Unlock this browser to read and modify the Samba server configuration.</p>{% endif %}
+{% endblock %}

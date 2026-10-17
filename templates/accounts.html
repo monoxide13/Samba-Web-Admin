@@ -1,0 +1,39 @@
+{% extends 'base.html' %}{% block content %}
+<h1>Users &amp; groups</h1>
+{% if data %}
+<p class="lede">Linux users and groups are managed with <code>useradd</code>, <code>usermod</code>, <code>groupadd</code>, <code>groupdel</code> and related tools. Samba passwords are separate from Linux passwords.</p>
+<div class="split">
+<section class="panel"><h2>Linux users</h2><div class="tablewrap"><table><thead><tr><th>Username</th><th>UID</th><th>Home</th><th>Shell</th><th>Samba</th></tr></thead><tbody>
+{% for user in data.users %}<tr><td><a href="{{ url_for('accounts',user=user.name) }}">{{ user.name }}</a>{% if user.name == account %} <span class="tiny">(app)</span>{% endif %}</td><td>{{ user.uid }}</td><td><code>{{ user.home }}</code></td><td><code>{{ user.shell.split('/')[-1] }}</code></td><td>{{ 'Yes' if user.samba else 'No' }}</td></tr>{% endfor %}
+</tbody></table></div><h3>Add Linux user</h3>
+<form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="user_create"><input type="hidden" name="return_to" value="accounts">
+<label>Username<input name="username" required pattern="[A-Za-z_][A-Za-z0-9_.-]*" maxlength="31"></label>
+<label>Primary group (blank creates same-named group)<select name="primary_group"><option value="">Create same-named group</option>{% for group in data.groups %}<option value="{{ group.name }}">{{ group.name }}</option>{% endfor %}</select></label>
+<label class="check"><input type="checkbox" name="nologin" checked> No interactive shell (<code>nologin</code>)</label>
+<label class="check"><input type="checkbox" name="nohome" checked> Do not create a home directory</label>
+<button>Create Linux user</button></form>
+</section>
+<section class="panel"><h2>Linux groups</h2><div class="tablewrap"><table><thead><tr><th>Group</th><th>GID</th><th>Members</th></tr></thead><tbody>{% for group in data.groups %}<tr><td>{{ group.name }}</td><td>{{ group.gid }}</td><td>{{ group.members|join(', ') or '—' }}</td></tr>{% endfor %}</tbody></table></div>
+<h3>Create group</h3><form method="post" action="{{ url_for('action') }}" class="inline-form"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="group_create"><input type="hidden" name="return_to" value="accounts"><input name="group" required placeholder="Group name"><button>Create</button></form>
+<h3>Change group membership</h3><form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="membership"><input type="hidden" name="return_to" value="accounts">
+<label>User<select name="username">{% for user in data.users if user.managed %}<option value="{{ user.name }}">{{ user.name }}</option>{% endfor %}</select></label>
+<label>Group<select name="group">{% for group in data.groups %}<option value="{{ group.name }}">{{ group.name }}</option>{% endfor %}</select></label>
+<label>Action<select name="member_action"><option value="add">Add supplementary membership</option><option value="remove">Remove supplementary membership</option></select></label><button>Apply membership</button></form>
+<details class="danger"><summary>Delete group</summary><form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="group_delete"><input type="hidden" name="return_to" value="accounts">
+<label>Group<select name="group">{% for group in data.groups if group.managed %}<option value="{{ group.name }}">{{ group.name }}</option>{% endfor %}</select></label><label>Type group name to confirm<input name="confirm" required></label><button class="destructive">Delete group</button></form></details>
+</section></div>
+{% if selected %}<section class="panel"><h2>Manage user: {{ selected.name }}</h2>
+{% if not selected.managed %}<p>This is a system or application user and is read-only here.</p>{% else %}
+<div class="split"><div><h3>Linux shell</h3><p class="hint">Changing the login shell does not delete or create home directories.</p>
+<form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="user_shell"><input type="hidden" name="return_to" value="accounts"><input type="hidden" name="username" value="{{ selected.name }}"><label class="check"><input type="checkbox" name="nologin" {{ 'checked' if 'nologin' in selected.shell else '' }}> Disable interactive shell</label><button>Save Linux shell</button></form>
+<h3>Home directory</h3><p class="hint">Update the account home path only. Existing files are not deleted or moved. Enabling creates <code>/home/{{ selected.name }}</code> when necessary.</p>
+<form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="user_home"><input type="hidden" name="return_to" value="accounts"><input type="hidden" name="username" value="{{ selected.name }}"><label class="check"><input type="checkbox" name="nohome" {{ 'checked' if selected.home == '/nonexistent' else '' }}> No home directory (<code>/nonexistent</code>)</label><button>Save home setting</button></form>
+<h3>Samba account</h3><form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="samba_password"><input type="hidden" name="return_to" value="accounts"><input type="hidden" name="username" value="{{ selected.name }}">
+<label>New Samba password<input type="password" name="password" required autocomplete="new-password"></label><label>Confirm Samba password<input type="password" name="password_confirm" required autocomplete="new-password"></label><button>Create / change Samba password</button></form>
+{% if selected.samba %}<form method="post" action="{{ url_for('action') }}" class="inline-form spaced"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="samba_toggle"><input type="hidden" name="return_to" value="accounts"><input type="hidden" name="username" value="{{ selected.name }}">
+<select name="toggle_action"><option value="enable">Enable Samba login</option><option value="disable">Disable Samba login</option><option value="remove">Remove Samba credentials only</option></select><button class="secondary">Apply</button></form>{% endif %}
+</div><div><h3>Delete Linux user</h3><p class="hint">Deletes the Samba account first (if present), then the Linux account. The user's home directory and files are retained, and references in share access lists are not automatically removed.</p>
+<form method="post" action="{{ url_for('action') }}" class="stack"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="operation" value="user_delete"><input type="hidden" name="return_to" value="accounts"><input type="hidden" name="username" value="{{ selected.name }}"><label>Type <strong>{{ selected.name }}</strong> to confirm<input name="confirm" required autocomplete="off"></label><button class="destructive">Delete Linux user</button></form></div></div>
+{% endif %}</section>{% endif %}
+{% else %}<p class="muted">Unlock this browser to view and manage users and groups.</p>{% endif %}
+{% endblock %}
